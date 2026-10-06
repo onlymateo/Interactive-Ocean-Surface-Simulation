@@ -17,12 +17,13 @@ interactive ocean surface simulation, across several graphics APIs.
 - OpenGL plane with editable triangle positions
 
 **In progress**
+- .config base plane size
 - Vulkan backend
 - DirectX backend
 
 **Next**
 - Real-time performance metrics
-- Performance logs
+- Stress-tests and Performance logs
 - FFT algorithm
 - Gerstner algorithm
 - Perlin noise algorithm
