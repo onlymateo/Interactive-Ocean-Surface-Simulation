@@ -1,13 +1,19 @@
 # Interactive Ocean Surface Simulation
 
-A C++ program that draws a grid of triangles whose heights change every frame, to simulate
-the ocean surface. The engine and wave method are chosen in `.config`.
-
 This project is a **prototype** that aims to implement and compare different algorithms for
-interactive ocean surface simulation, across several graphics APIs.
+interactive ocean surface simulation, across several graphics APIs. It will be used as the protoype
+of my thesis subject that I will submit for my PhD application.
+So I am trying my best to limit my AI usage on this project in order to fully understand and learn the
+maths behind it.
+
 
 > **Status:** the wave methods (`gerstner`, `perlin`, `fft`) are placeholders returning `0`,
 > so the surface is flat until they are implemented.
+
+## Development diary
+
+Notes on what was done, what went wrong, what to do next, and thoughts about the project in [diary/](diary/), one page per date. Latest:
+[2026-10-06](diary/2026-10-06.md).
 
 ## Roadmap
 
