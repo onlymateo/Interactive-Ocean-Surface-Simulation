@@ -4,11 +4,10 @@ SRCS = main.cpp \
        source/calculus/fft.cpp \
        source/calculus/gerstner.cpp \
        source/calculus/perlin.cpp \
-       source/engines/engines.cpp \
-       source/engines/opengl/opengl.cpp \
+       source/engines/directx/directx.cpp \
        source/render/plane.cpp \
        source/utils/config.cpp
-LIBS = -lglfw3 -lopengl32 -lgdi32
+LIBS = -lglfw3 -lgdi32 -ld3d11 -ldxgi -ld3dcompiler
 
 all:
 	$(CXX) -std=c++17 -Wall -Wextra -O2 -Isource $(SRCS) -o simulation.exe $(LIBS)

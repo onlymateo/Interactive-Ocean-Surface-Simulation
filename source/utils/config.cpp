@@ -29,9 +29,6 @@ Config loadConfig(const std::string& path) {
     std::map<std::string, std::string> values = readKeyValues(path);
     Config config;
 
-    if (values.count("engine")) {
-        config.engine = values["engine"];
-    }
     if (values.count("width")) {
         config.width = std::stoi(values["width"]);
     }
@@ -40,6 +37,27 @@ Config loadConfig(const std::string& path) {
     }
     if (values.count("method")) {
         config.method = values["method"];
+    }
+    if (values.count("cellsnumber")) {
+        config.cellsnumber = std::stoi(values["cellsnumber"]);
+    }
+    if (values.count("planesize")) {
+        config.planeSize = std::stof(values["planesize"]);
+    }
+    if (values.count("nearplane")) {
+        config.nearPlane = std::stod(values["nearplane"]);
+    }
+    if (values.count("farplane")) {
+        config.farPlane = std::stod(values["farplane"]);
+    }
+    if (values.count("halfheightatnear")) {
+        config.halfHeightAtNear = std::stod(values["halfheightatnear"]);
+    }
+    if (values.count("cameradistance")) {
+        config.cameraDistance = std::stof(values["cameradistance"]);
+    }
+    if (values.count("tiltdegrees")) {
+        config.tiltDegrees = std::stof(values["tiltdegrees"]);
     }
     return config;
 }

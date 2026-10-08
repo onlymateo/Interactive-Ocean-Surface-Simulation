@@ -19,21 +19,19 @@ Notes on what was done, what went wrong, what to do next, and thoughts about the
 
 **Done**
 - Initialize the repository
-- Open an OpenGL window
-- OpenGL plane with editable triangle positions
+- Open a window
+- Plane with editable triangle positions
+- Direct3D 11 backend (OpenGL removed)
+- .config base plane size
 
 **In progress**
-- .config base plane size
-- Vulkan backend
-- DirectX backend
+- Gerstner algorithm
 
 **Next**
 - Real-time performance metrics
 - Stress-tests and Performance logs
 - FFT algorithm
-- Gerstner algorithm
 - Perlin noise algorithm
-- Benchmark each graphics library with each algorithm
 - Procedural generation (chunks?)
 
 ## Build and run
@@ -51,7 +49,6 @@ make clean  # delete simulation.exe
 `.config` holds one `key=value` per line. Lines starting with `#` are comments.
 
 ```
-engine=opengl     # window backend
 width=800         # window width in pixels
 height=600        # window height in pixels
 method=perlin     # gerstner, perlin or fft
@@ -60,19 +57,15 @@ method=perlin     # gerstner, perlin or fft
 ## Project structure
 
 ```
-main.cpp                   reads .config and starts the engine
+main.cpp                   reads .config and starts the DirectX window
 source/
 ├── utils/config.*         loads .config
 ├── calculus/              wave methods (gerstner, perlin, fft) and their lookup table
-├── render/plane.*         triangle mesh: update(time) and draw()
-└── engines/
-    ├── engines.cpp        table of engines
-    └── opengl/            window, camera and render loop
+├── render/plane.*         triangle mesh: update(time), vertices() and indices()
+└── engines/directx/       Direct3D 11 window, camera, shaders and render loop
 ```
 
-## Adding a wave method or an engine
+## Adding a wave method
 
-- **Wave method:** add the function in `source/calculus/`, declare it in `calculus.hpp`,
-  register it in `methods.cpp`, and add the file to `SRCS` in the Makefile.
-- **Engine:** add `run(int width, int height, HeightFunction wave)` in `source/engines/`,
-  register it in `engines.cpp`, and add its files to `SRCS`.
+Add the function in `source/calculus/`, declare it in `calculus.hpp`,
+register it in `methods.cpp`, and add the file to `SRCS` in the Makefile.
