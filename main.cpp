@@ -4,13 +4,7 @@
 #include "utils/config.hpp"
 
 int main() {
-    Config config = loadConfig("./.config");
+    Config config = loadConfig("./config.json");
 
-    HeightFunction wave = findWaveMethod(config.method);
-    if (!wave) {
-        std::cerr << "Error: Unknown method '" << config.method << "' in .config (expected gerstner, perlin or fft)." << std::endl;
-        return 1;
-    }
-
-    return runDirectX(config, wave);
+    return runDirectX(config);
 }

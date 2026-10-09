@@ -1,6 +1,5 @@
 CXX = g++
 SRCS = main.cpp \
-       source/calculus/methods.cpp \
        source/calculus/fft.cpp \
        source/calculus/gerstner.cpp \
        source/calculus/perlin.cpp \

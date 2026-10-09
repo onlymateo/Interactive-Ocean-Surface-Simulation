@@ -7,6 +7,7 @@
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include "render/plane.hpp"
@@ -52,8 +53,7 @@ ComPtr<ID3DBlob> compileShader(const char* entry, const char* target) {
     return code;
 }
 
-// Projection and model-view in one matrix: where the plane sits and how it is turned.
-// Same maths as glFrustum + glTranslatef + glRotatef, with depth mapped to 0..1 for Direct3D.
+
 void cameraMatrix(const Config& config, float out[16]) {
     float n = static_cast<float>(config.nearPlane);
     float f = static_cast<float>(config.farPlane);
@@ -88,7 +88,7 @@ void cameraMatrix(const Config& config, float out[16]) {
 
 }
 
-int runDirectX(const Config& config, HeightFunction wave) {
+int runDirectX(const Config& config) {
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
         return 1;
@@ -166,7 +166,7 @@ int runDirectX(const Config& config, HeightFunction wave) {
     device->CreateInputLayout(layout, 2, vsCode->GetBufferPointer(), vsCode->GetBufferSize(), &inputLayout);
 
     // The plane: the triangles never change, the heights are rewritten every frame.
-    Plane plane(config.planeSize, config.cellsnumber, wave);
+    Plane plane(config);
     const UINT indexCount = static_cast<UINT>(plane.indices().size());
     const UINT vertexBytes = static_cast<UINT>(plane.vertices().size() * sizeof(Plane::Vertex));
 
@@ -226,14 +226,30 @@ int runDirectX(const Config& config, HeightFunction wave) {
 
     // Each frame: clear, move the waves to the current time, draw, then show the image.
     const float background[4] = {0.05f, 0.05f, 0.1f, 1.0f};
+    // Performance metrics, shown in the window title and refreshed twice a second.
+    const double metricsInterval = 0.5;
+    const size_t pointCount = plane.vertices().size();
+    double metricsStart = glfwGetTime();
+    int framesCounted = 0;
+    int updatesCounted = 0;
+
+    // The plane is recomputed config.calculusfrequency times per second (0 or less: every frame).
+    const double updateInterval = config.calculusfrequency > 0 ? 1.0 / config.calculusfrequency : 0.0;
+    double lastUpdate = -1.0;
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
-        plane.update(static_cast<float>(glfwGetTime()));
-        D3D11_MAPPED_SUBRESOURCE mapped;
-        context->Map(vertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-        std::memcpy(mapped.pData, plane.vertices().data(), vertexBytes);
-        context->Unmap(vertexBuffer.Get(), 0);
+        double time = glfwGetTime();
+        if (lastUpdate < 0.0 || time - lastUpdate >= updateInterval) {
+            lastUpdate = time;
+            plane.update(static_cast<float>(time));
+            D3D11_MAPPED_SUBRESOURCE mapped;
+            context->Map(vertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+            std::memcpy(mapped.pData, plane.vertices().data(), vertexBytes);
+            context->Unmap(vertexBuffer.Get(), 0);
+            ++updatesCounted;
+        }
 
         context->ClearRenderTargetView(colorView.Get(), background);
         context->ClearDepthStencilView(depthView.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
@@ -248,7 +264,22 @@ int runDirectX(const Config& config, HeightFunction wave) {
         context->PSSetShader(outlineShader.Get(), nullptr, 0);
         context->DrawIndexed(indexCount, 0, 0);
 
-        swapChain->Present(1, 0);
+        swapChain->Present(0, 0); // FPS is not capped by screen refresh rate
+
+        ++framesCounted;
+        double now = glfwGetTime();
+        if (now - metricsStart >= metricsInterval) {
+            double fps = framesCounted / (now - metricsStart);
+            double planePasses = updatesCounted / (now - metricsStart);
+            char title[256];
+            std::snprintf(title, sizeof(title),
+                          "DirectX Window | %.0f FPS | %.0f plane updates/s (%.2f M points/s) | %zu points",
+                          fps, planePasses, planePasses * pointCount / 1e6, pointCount);
+            glfwSetWindowTitle(window, title);
+            metricsStart = now;
+            framesCounted = 0;
+            updatesCounted = 0;
+        }
     }
 
     glfwDestroyWindow(window);

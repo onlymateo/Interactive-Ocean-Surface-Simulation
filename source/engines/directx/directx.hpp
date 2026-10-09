@@ -4,6 +4,6 @@
     #include "calculus/calculus.hpp"
     #include "utils/config.hpp"
 
-    int runDirectX(const Config& config, HeightFunction wave);
+    int runDirectX(const Config& config);
 
 #endif // ENGINES_DIRECTX_HPP

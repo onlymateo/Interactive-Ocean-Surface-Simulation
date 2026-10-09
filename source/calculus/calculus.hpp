@@ -4,14 +4,10 @@
     #include <string>
     #include <cmath>
     #include <vector>
+    #include "utils/config.hpp"
 
-
-    using HeightFunction = float (*)(float x, float y, float time);
-
-    HeightFunction findWaveMethod(const std::string& name);
-
-    float gerstnerWaveHeight(float x, float y, float time);
-    float perlinWaveHeight(float x, float y, float time);
-    float fftWaveHeight(float x, float y, float time);
+    float gerstnerWaveHeight(float x, float y, float time, GerstnerConfig g);
+    //float perlinWaveHeight(float x, float y, float time);
+    //float fftWaveHeight(float x, float y, float time);
 
 #endif // CALCULUS_HPP

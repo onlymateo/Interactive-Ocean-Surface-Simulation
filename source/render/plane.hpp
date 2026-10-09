@@ -3,29 +3,28 @@
 
     #include <vector>
     #include "calculus/calculus.hpp"
+    #include "utils/config.hpp"
 
     class Plane {
-    public:
-        Plane(float size, int cells, HeightFunction heightAt);
+        public:
+            Plane(Config config);
 
-        void update(float time);
+            void update(float time);
 
-        struct Vertex {
-            float x, y, z;
-            float r, g, b;
-        };
+            struct Vertex {
+                float x, y, z;
+                float r, g, b;
+            };
 
-        const std::vector<Vertex>& vertices() const { return vertices_; }
-        const std::vector<unsigned int>& indices() const { return indices_; }
+            const std::vector<Vertex>& vertices() const { return vertices_; }
+            const std::vector<unsigned int>& indices() const { return indices_; }
 
-    private:
-        void buildMesh();
+        private:
+            void buildMesh();
 
-        float size_;
-        int cells_;
-        HeightFunction heightAt_;
-        std::vector<Vertex> vertices_;
-        std::vector<unsigned int> indices_;
+            Config config;
+            std::vector<Vertex> vertices_;
+            std::vector<unsigned int> indices_;
     };
 
 #endif // RENDER_PLANE_HPP
