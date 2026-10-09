@@ -1,9 +1,9 @@
-#ifndef ENGINES_DIRECTX_HPP
-#define ENGINES_DIRECTX_HPP
+#ifndef DIRECTX_HPP
+#define DIRECTX_HPP
 
     #include "calculus/calculus.hpp"
     #include "utils/config.hpp"
 
     int runDirectX(const Config& config);
 
-#endif // ENGINES_DIRECTX_HPP
+#endif // DIRECTX_HPP

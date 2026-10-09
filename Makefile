@@ -3,7 +3,8 @@ SRCS = main.cpp \
        source/calculus/fft.cpp \
        source/calculus/gerstner.cpp \
        source/calculus/perlin.cpp \
-       source/engines/directx/directx.cpp \
+       source/engines/directx.cpp \
+       source/engines/controler.cpp \
        source/render/plane.cpp \
        source/utils/config.cpp
 LIBS = -lglfw3 -lgdi32 -ld3d11 -ldxgi -ld3dcompiler

@@ -1,4 +1,5 @@
-#include "engines/directx/directx.hpp"
+#include "engines/directx.hpp"
+#include "engines/controler.hpp"
 
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3.h>
@@ -13,6 +14,8 @@
 #include "render/plane.hpp"
 
 using Microsoft::WRL::ComPtr;
+
+// I don't like this code
 
 namespace {
 
@@ -54,14 +57,28 @@ ComPtr<ID3DBlob> compileShader(const char* entry, const char* target) {
 }
 
 
-void cameraMatrix(const Config& config, float out[16]) {
+void cameraMatrix(const Config& config, const CameraState& camera, float out[16]) {
     float n = static_cast<float>(config.nearPlane);
     float f = static_cast<float>(config.farPlane);
     float halfHeight = static_cast<float>(config.halfHeightAtNear);
     float halfWidth = halfHeight * static_cast<float>(config.width) / static_cast<float>(config.height);
 
-    float tilt = config.tiltDegrees * 3.14159265358979f / 180.0f;
+    float tilt = camera.tiltDegrees * 3.14159265358979f / 180.0f;
     float c = std::cos(tilt), s = std::sin(tilt);
+    float yaw = camera.yawDegrees * 3.14159265358979f / 180.0f;
+    float cy = std::cos(yaw), sy = std::sin(yaw);
+
+    // View = tilt * yaw * move the world by the opposite of the camera position,
+    // so the camera turns around itself (not around the point it looks at).
+    const float rotation[3][3] = {
+        {cy,     -sy,    0.0f},
+        {c * sy, c * cy, -s},
+        {s * sy, s * cy, c},
+    };
+    float shift[3];
+    for (int row = 0; row < 3; ++row) {
+        shift[row] = -(rotation[row][0] * camera.x + rotation[row][1] * camera.y + rotation[row][2] * camera.z);
+    }
 
     const float projection[16] = {
         n / halfWidth, 0.0f,           0.0f,        0.0f,
@@ -70,10 +87,10 @@ void cameraMatrix(const Config& config, float out[16]) {
         0.0f,          0.0f,           -1.0f,       0.0f,
     };
     const float view[16] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, c,    -s,   0.0f,
-        0.0f, s,    c,    config.cameraDistance,
-        0.0f, 0.0f, 0.0f, 1.0f,
+        rotation[0][0], rotation[0][1], rotation[0][2], shift[0],
+        rotation[1][0], rotation[1][1], rotation[1][2], shift[1],
+        rotation[2][0], rotation[2][1], rotation[2][2], shift[2],
+        0.0f,           0.0f,           0.0f,           1.0f,
     };
 
     for (int row = 0; row < 4; ++row) {
@@ -165,7 +182,6 @@ int runDirectX(const Config& config) {
     ComPtr<ID3D11InputLayout> inputLayout;
     device->CreateInputLayout(layout, 2, vsCode->GetBufferPointer(), vsCode->GetBufferSize(), &inputLayout);
 
-    // The plane: the triangles never change, the heights are rewritten every frame.
     Plane plane(config);
     const UINT indexCount = static_cast<UINT>(plane.indices().size());
     const UINT vertexBytes = static_cast<UINT>(plane.vertices().size() * sizeof(Plane::Vertex));
@@ -186,18 +202,22 @@ int runDirectX(const Config& config) {
     ComPtr<ID3D11Buffer> indexBuffer;
     device->CreateBuffer(&indexDesc, &indexData, &indexBuffer);
 
-    // The camera never moves, so its matrix is computed once.
-    float camera[16];
-    cameraMatrix(config, camera);
+    // camera states
+    CameraState cameraState;
+    float startTilt = config.tiltDegrees * 3.14159265358979f / 180.0f;
+    cameraState.tiltDegrees = config.tiltDegrees;
+    cameraState.y = -config.cameraDistance * std::sin(startTilt);
+    cameraState.z = -config.cameraDistance * std::cos(startTilt);
+    float cameraValues[16];
     D3D11_BUFFER_DESC cameraDesc{};
-    cameraDesc.ByteWidth = sizeof(camera);
-    cameraDesc.Usage = D3D11_USAGE_IMMUTABLE;
+    cameraDesc.ByteWidth = sizeof(cameraValues);
+    cameraDesc.Usage = D3D11_USAGE_DYNAMIC;
     cameraDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    D3D11_SUBRESOURCE_DATA cameraData{camera, 0, 0};
+    cameraDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     ComPtr<ID3D11Buffer> cameraBuffer;
-    device->CreateBuffer(&cameraDesc, &cameraData, &cameraBuffer);
+    device->CreateBuffer(&cameraDesc, nullptr, &cameraBuffer);
 
-    // Draw both sides of the triangles (by default Direct3D hides the back side).
+    // // Draw both sides of the triangles
     D3D11_RASTERIZER_DESC rasterDesc{};
     rasterDesc.FillMode = D3D11_FILL_SOLID;
     rasterDesc.CullMode = D3D11_CULL_NONE;
@@ -205,7 +225,7 @@ int runDirectX(const Config& config) {
     ComPtr<ID3D11RasterizerState> rasterState;
     device->CreateRasterizerState(&rasterDesc, &rasterState);
 
-    // The same triangles as outlines, pulled slightly towards the camera so they are not hidden by the fill.
+    // Outlines of the triangles
     rasterDesc.FillMode = D3D11_FILL_WIREFRAME;
     rasterDesc.DepthBias = -1000;
     rasterDesc.SlopeScaledDepthBias = -1.0f;
@@ -223,24 +243,33 @@ int runDirectX(const Config& config) {
     context->IASetIndexBuffer(indexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
     context->VSSetShader(vertexShader.Get(), nullptr, 0);
     context->VSSetConstantBuffers(0, 1, cameraBuffer.GetAddressOf());
-
-    // Each frame: clear, move the waves to the current time, draw, then show the image.
     const float background[4] = {0.05f, 0.05f, 0.1f, 1.0f};
-    // Performance metrics, shown in the window title and refreshed twice a second.
+
+    // Performance metrics
     const double metricsInterval = 0.5;
     const size_t pointCount = plane.vertices().size();
     double metricsStart = glfwGetTime();
     int framesCounted = 0;
     int updatesCounted = 0;
 
-    // The plane is recomputed config.calculusfrequency times per second (0 or less: every frame).
+    // The plane is recomputed config.calculusfrequency times per second
     const double updateInterval = config.calculusfrequency > 0 ? 1.0 / config.calculusfrequency : 0.0;
     double lastUpdate = -1.0;
+    double lastFrame = glfwGetTime();
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
         double time = glfwGetTime();
+
+        updateCamera(window, cameraState, static_cast<float>(time - lastFrame));
+        lastFrame = time;
+        cameraMatrix(config, cameraState, cameraValues);
+        D3D11_MAPPED_SUBRESOURCE cameraMapped;
+        context->Map(cameraBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &cameraMapped);
+        std::memcpy(cameraMapped.pData, cameraValues, sizeof(cameraValues));
+        context->Unmap(cameraBuffer.Get(), 0);
+
         if (lastUpdate < 0.0 || time - lastUpdate >= updateInterval) {
             lastUpdate = time;
             plane.update(static_cast<float>(time));
