@@ -48,12 +48,27 @@ void Plane::buildMesh() {
             });
         }
     }
+
+    base_ = vertices_;
+}
+
+void Plane::moveTo(float centerX, float centerY) {
+    for (Vertex& vertex : base_) {
+        vertex.x += centerX - centerX_;
+        vertex.y += centerY - centerY_;
+    }
+    for (Vertex& vertex : vertices_) {
+        vertex.x += centerX - centerX_;
+        vertex.y += centerY - centerY_;
+    }
+    centerX_ = centerX;
+    centerY_ = centerY;
 }
 
 void Plane::update(float time) {
-    for (Vertex& vertex : vertices_) {
-        if (config.selectedmethod == "gerstner") {
-            vertex.z = gerstnerWaveHeight(vertex.x, vertex.y, time, config.g);
+    if (config.selectedmethod == "gerstner") {
+        for (std::size_t i = 0; i < base_.size(); i++) {
+            vertices_[i] = gerstnerWaveHeight(base_[i], time, config.g);
         }
     }
 }

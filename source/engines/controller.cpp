@@ -1,4 +1,4 @@
-#include "engines/controler.hpp"
+#include "engines/controller.hpp"
 
 #include <windows.h>
 #include <GLFW/glfw3.h>
@@ -55,5 +55,23 @@ void updateCamera(GLFWwindow* window, CameraState& camera, float dt) {
     }
     if (isDown(VK_CONTROL)) {
         camera.z -= step;
+    }
+}
+
+void cameraRotation(const CameraState& camera, float rotation[3][3]) {
+    float tilt = camera.tiltDegrees * 3.14159265358979f / 180.0f;
+    float c = std::cos(tilt), s = std::sin(tilt);
+    float yaw = camera.yawDegrees * 3.14159265358979f / 180.0f;
+    float cy = std::cos(yaw), sy = std::sin(yaw);
+
+    const float values[3][3] = {
+        {cy,     -sy,    0.0f},
+        {c * sy, c * cy, -s},
+        {s * sy, s * cy, c},
+    };
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            rotation[row][col] = values[row][col];
+        }
     }
 }

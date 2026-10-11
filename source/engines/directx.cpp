@@ -1,5 +1,8 @@
 #include "engines/directx.hpp"
-#include "engines/controler.hpp"
+#include "engines/controller.hpp"
+#include "engines/chunk.hpp"
+#include "engines/lighting.hpp"
+#include "engines/skybox.hpp"
 
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3.h>
@@ -25,20 +28,49 @@ cbuffer Camera : register(b0) {
     row_major float4x4 viewProjection;
 };
 
+cbuffer Lighting : register(b1) {
+    float3 sunDirection;
+    float sunIntensity;
+    float3 sunColor;
+    float ambient;
+    float3 cameraPosition;
+    float shininess;
+};
+
 struct VertexOut {
     float4 position : SV_POSITION;
     float3 color : COLOR;
+    float3 worldPosition : TEXCOORD0;
 };
 
 VertexOut vsMain(float3 position : POSITION, float3 color : COLOR) {
     VertexOut output;
     output.position = mul(viewProjection, float4(position, 1.0));
     output.color = color;
+    output.worldPosition = position;
     return output;
 }
 
 float4 psMain(VertexOut input) : SV_TARGET {
-    return float4(input.color, 1.0);
+    // The direction the surface faces, found from the position of the neighbour pixels
+    float3 normal = normalize(cross(ddx(input.worldPosition), ddy(input.worldPosition)));
+    if (normal.z < 0.0) {
+        normal = -normal; // the water always faces up
+    }
+
+    float3 toSun = normalize(sunDirection);
+    float3 toCamera = normalize(cameraPosition - input.worldPosition);
+    float3 sunLight = sunColor * sunIntensity;
+
+    // Diffuse: the surface is brighter when it faces the sun
+    float diffuse = saturate(dot(normal, toSun));
+
+    // Specular: the shine of the sun on the water, when the reflection goes to the camera
+    float3 halfway = normalize(toSun + toCamera);
+    float specular = pow(saturate(dot(normal, halfway)), shininess);
+
+    float3 color = input.color * (ambient + diffuse * sunLight) + specular * sunLight;
+    return float4(color, 1.0);
 }
 
 float4 psOutline() : SV_TARGET {
@@ -63,18 +95,8 @@ void cameraMatrix(const Config& config, const CameraState& camera, float out[16]
     float halfHeight = static_cast<float>(config.halfHeightAtNear);
     float halfWidth = halfHeight * static_cast<float>(config.width) / static_cast<float>(config.height);
 
-    float tilt = camera.tiltDegrees * 3.14159265358979f / 180.0f;
-    float c = std::cos(tilt), s = std::sin(tilt);
-    float yaw = camera.yawDegrees * 3.14159265358979f / 180.0f;
-    float cy = std::cos(yaw), sy = std::sin(yaw);
-
-    // View = tilt * yaw * move the world by the opposite of the camera position,
-    // so the camera turns around itself (not around the point it looks at).
-    const float rotation[3][3] = {
-        {cy,     -sy,    0.0f},
-        {c * sy, c * cy, -s},
-        {s * sy, s * cy, c},
-    };
+    float rotation[3][3];
+    cameraRotation(camera, rotation);
     float shift[3];
     for (int row = 0; row < 3; ++row) {
         shift[row] = -(rotation[row][0] * camera.x + rotation[row][1] * camera.y + rotation[row][2] * camera.z);
@@ -182,9 +204,16 @@ int runDirectX(const Config& config) {
     ComPtr<ID3D11InputLayout> inputLayout;
     device->CreateInputLayout(layout, 2, vsCode->GetBufferPointer(), vsCode->GetBufferSize(), &inputLayout);
 
-    Plane plane(config);
-    const UINT indexCount = static_cast<UINT>(plane.indices().size());
-    const UINT vertexBytes = static_cast<UINT>(plane.vertices().size() * sizeof(Plane::Vertex));
+
+    std::vector<Plane> chunks = generateChunks(config);
+
+    Lighting lighting(device.Get(), config);
+    Skybox skybox(device.Get(), config);
+
+    const UINT indexCount = static_cast<UINT>(chunks[0].indices().size());
+    const UINT verticesPerChunk = static_cast<UINT>(chunks[0].vertices().size());
+    const UINT chunkBytes = verticesPerChunk * sizeof(Plane::Vertex);
+    const UINT vertexBytes = chunkBytes * static_cast<UINT>(chunks.size());
 
     D3D11_BUFFER_DESC vertexDesc{};
     vertexDesc.ByteWidth = vertexBytes;
@@ -198,7 +227,7 @@ int runDirectX(const Config& config) {
     indexDesc.ByteWidth = indexCount * sizeof(unsigned int);
     indexDesc.Usage = D3D11_USAGE_IMMUTABLE;
     indexDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    D3D11_SUBRESOURCE_DATA indexData{plane.indices().data(), 0, 0};
+    D3D11_SUBRESOURCE_DATA indexData{chunks[0].indices().data(), 0, 0};
     ComPtr<ID3D11Buffer> indexBuffer;
     device->CreateBuffer(&indexDesc, &indexData, &indexBuffer);
 
@@ -247,7 +276,7 @@ int runDirectX(const Config& config) {
 
     // Performance metrics
     const double metricsInterval = 0.5;
-    const size_t pointCount = plane.vertices().size();
+    const size_t pointCount = static_cast<size_t>(verticesPerChunk) * chunks.size();
     double metricsStart = glfwGetTime();
     int framesCounted = 0;
     int updatesCounted = 0;
@@ -270,28 +299,51 @@ int runDirectX(const Config& config) {
         std::memcpy(cameraMapped.pData, cameraValues, sizeof(cameraValues));
         context->Unmap(cameraBuffer.Get(), 0);
 
-        if (lastUpdate < 0.0 || time - lastUpdate >= updateInterval) {
+        // Chunks follow the camera (not limited by calculusfrequency)
+        bool chunksMoved = updateChunks(chunks, config, cameraState.x, cameraState.y, static_cast<float>(time));
+
+        bool recompute = lastUpdate < 0.0 || time - lastUpdate >= updateInterval;
+        if (recompute) {
             lastUpdate = time;
-            plane.update(static_cast<float>(time));
+            for (Plane& chunk : chunks) {
+                chunk.update(static_cast<float>(time));
+            }
+            ++updatesCounted;
+        }
+        if (recompute || chunksMoved) {
             D3D11_MAPPED_SUBRESOURCE mapped;
             context->Map(vertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-            std::memcpy(mapped.pData, plane.vertices().data(), vertexBytes);
+            for (size_t i = 0; i < chunks.size(); ++i) {
+                std::memcpy(static_cast<char*>(mapped.pData) + i * chunkBytes, chunks[i].vertices().data(), chunkBytes);
+            }
             context->Unmap(vertexBuffer.Get(), 0);
-            ++updatesCounted;
         }
 
         context->ClearRenderTargetView(colorView.Get(), background);
         context->ClearDepthStencilView(depthView.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
 
+        // The sky first, behind everything, then the water with the light of the sun
+        lighting.update(context.Get(), cameraState);
+        context->RSSetState(rasterState.Get());
+        skybox.draw(context.Get(), cameraState);
+        context->IASetInputLayout(inputLayout.Get()); // the sky changed them
+        context->VSSetShader(vertexShader.Get(), nullptr, 0);
+
         // Coloured triangles
         context->RSSetState(rasterState.Get());
         context->PSSetShader(pixelShader.Get(), nullptr, 0);
-        context->DrawIndexed(indexCount, 0, 0);
+        for (size_t i = 0; i < chunks.size(); ++i) {
+            context->DrawIndexed(indexCount, 0, static_cast<INT>(i * verticesPerChunk));
+        }
 
         // Same triangles again, as black outlines, so each triangle is visible
-        context->RSSetState(outlineState.Get());
-        context->PSSetShader(outlineShader.Get(), nullptr, 0);
-        context->DrawIndexed(indexCount, 0, 0);
+        if (config.showtriangles) {
+            context->RSSetState(outlineState.Get());
+            context->PSSetShader(outlineShader.Get(), nullptr, 0);
+            for (size_t i = 0; i < chunks.size(); ++i) {
+                context->DrawIndexed(indexCount, 0, static_cast<INT>(i * verticesPerChunk));
+            }
+        }
 
         swapChain->Present(0, 0); // FPS is not capped by screen refresh rate
 

@@ -1,5 +1,5 @@
-#ifndef CONTROLER_HPP
-#define CONTROLER_HPP
+#ifndef CONTROLLER_HPP
+#define CONTROLLER_HPP
 
     #include <windows.h>
 
@@ -22,4 +22,7 @@
 
     void updateCamera(GLFWwindow* window, CameraState& camera, float dt);
 
-#endif // CONTROLER_HPP
+    // How the camera is turned: world direction -> camera direction (yaw, then tilt).
+    void cameraRotation(const CameraState& camera, float rotation[3][3]);
+
+#endif // CONTROLLER_HPP
