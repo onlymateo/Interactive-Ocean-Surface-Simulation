@@ -71,4 +71,9 @@ void Plane::update(float time) {
             vertices_[i] = gerstnerWaveHeight(base_[i], time, config.g);
         }
     }
+    if (config.selectedmethod == "fft") {
+        for (std::size_t i = 0; i < base_.size(); i++) {
+            vertices_[i] = fftWaveHeight(base_[i], time, config.f);
+        }
+    }
 }

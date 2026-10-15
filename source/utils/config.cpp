@@ -97,6 +97,16 @@ Config loadConfig(const std::string& path) {
                 }
             }
         }
+
+        if (method.value("name", "") == "fft") {
+            config.f.A = method.value("A", config.f.A);
+            config.f.V = method.value("V", config.f.V);
+            config.f.D = method.value("D", config.f.D);
+            config.f.seed = method.value("seed", config.f.seed);
+            config.f.lambda = method.value("lambda", config.f.lambda);
+            config.f.N = plane.value("cellsnumber", config.f.N);
+            config.f.size = plane.value("planesize", config.f.size);
+        }
     }
     return config;
 }

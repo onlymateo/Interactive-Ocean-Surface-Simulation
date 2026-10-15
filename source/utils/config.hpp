@@ -12,6 +12,16 @@
         std::vector<float> s = {}; // steepness
     };
 
+    struct FFTConfig {
+        float V = 1.0; //wind speed
+        std::vector<float> D = {}; //wind direction vector
+        float A = 0.000001; //phillips spectrum amplitude constant
+        int seed = 42; //seed for the random Xi values
+        float lambda = 1.5; //chopiness control parameter 1.0 <= Lambda <= 2.0
+        int N = 16; //equals to cellsnumber
+        float size = 100.0; //equals to plane size
+    };
+
     struct RGBcolor {
         float r = 0.0;
         float g = 0.0;
@@ -40,7 +50,7 @@
         std::string selectedmethod = "gerstner"; // slected wave method
 
         // plane config
-        int cellsnumber = 20; // number of cells in the plane
+        int cellsnumber = 16; // number of cells in the plane
         float planeSize = 2.0f; // width and depth of the plane (world units)
         RGBcolor color; // color of the plane
         float baseZpos = 0.0f; // base z position of the plane
@@ -61,6 +71,7 @@
 
         // gerstner config
         GerstnerConfig g;
+        FFTConfig f;
     };
 
     inline const std::vector<std::string> selectablemethods = {"gerstner", "fft", "perlin"};
@@ -70,3 +81,4 @@
     Config loadConfig(const std::string& path);
 
 #endif // UTILS_CONFIG_HPP
+

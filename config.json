@@ -4,7 +4,7 @@
         "width": 800
     },
     "plane": {
-        "cellsnumber": 100,
+        "cellsnumber": 16,
         "planesize": 150.0,
         "color": {
             "r": 0.1,
@@ -12,7 +12,7 @@
             "b": 0.8
         },
         "basezpos": 0.0,
-        "chunksnumber": 9,
+        "chunksnumber": 120,
         "showtriangles": true
     },
     "camera": {
@@ -64,6 +64,14 @@
                 0.3,
                 0.2
             ]
+        },
+        {
+            "name": "fft",
+            "A": 0.0001,
+            "V": 10.0,
+            "D": [1.0, 0.1],
+            "seed": 42,
+            "lambda": 1.5
         }
     ]
 
