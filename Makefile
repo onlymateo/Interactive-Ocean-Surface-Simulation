@@ -2,7 +2,6 @@ CXX = g++
 SRCS = main.cpp \
        source/calculus/fft.cpp \
        source/calculus/gerstner.cpp \
-       source/calculus/perlin.cpp \
        source/engines/directx.cpp \
        source/engines/controller.cpp \
        source/engines/chunk.cpp \

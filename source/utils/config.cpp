@@ -101,7 +101,22 @@ Config loadConfig(const std::string& path) {
         if (method.value("name", "") == "fft") {
             config.f.A = method.value("A", config.f.A);
             config.f.V = method.value("V", config.f.V);
-            config.f.D = method.value("D", config.f.D);
+            config.f.L = config.f.V * config.f.V / 9.81; // largest wave made by the wind
+
+            // the wind direction is called "D" in config.json
+            config.f.w = method.value("w", std::vector<double>{1.0, 0.0});
+            if (config.f.w.size() < 2) config.f.w = {1.0, 0.0};
+
+            // normalisation of the vector
+            double w_len = std::sqrt(config.f.w[0] * config.f.w[0] + config.f.w[1] * config.f.w[1]);
+            if (w_len == 0.0) {
+                config.f.w = {1.0, 0.0};
+                w_len = 1.0;
+            }
+            config.f.wx = config.f.w[0] / w_len;
+            config.f.wz = config.f.w[1] / w_len;
+
+
             config.f.seed = method.value("seed", config.f.seed);
             config.f.lambda = method.value("lambda", config.f.lambda);
             config.f.N = plane.value("cellsnumber", config.f.N);

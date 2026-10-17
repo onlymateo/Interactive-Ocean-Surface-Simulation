@@ -20,6 +20,7 @@
 
             const std::vector<Vertex>& vertices() const { return vertices_; }
             const std::vector<unsigned int>& indices() const { return indices_; }
+            
 
         private:
             void buildMesh();

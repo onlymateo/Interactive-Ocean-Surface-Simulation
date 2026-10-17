@@ -3,6 +3,10 @@
 
     #include <string>
     #include <vector>
+    #include <complex>
+    #include <cmath>
+    #include <random>
+    #include <algorithm>
 
     struct GerstnerConfig {
         std::vector<float> k = {}; // number of waves
@@ -14,12 +18,26 @@
 
     struct FFTConfig {
         float V = 1.0; //wind speed
-        std::vector<float> D = {}; //wind direction vector
+        std::vector<double> w = {}; //wind direction vector
+        double wx = 0; //normalized wind direction vector components
+        double wz = 0; 
         float A = 0.000001; //phillips spectrum amplitude constant
         int seed = 42; //seed for the random Xi values
         float lambda = 1.5; //chopiness control parameter 1.0 <= Lambda <= 2.0
         int N = 16; //equals to cellsnumber
         float size = 100.0; //equals to plane size
+        double L = V * V / 9.81;
+
+        using ComplexGrid = std::vector<std::vector<std::complex<double>>>;
+        std::normal_distribution<double> dist = std::normal_distribution<double>(0.0, 1.0);
+
+        ComplexGrid h0; // initial spectrum, drawn once by initFFTSpectrum
+        ComplexGrid ht =ComplexGrid(N, std::vector<std::complex<double>>(N, 0.0));
+        ComplexGrid ht_dx = ComplexGrid(N, std::vector<std::complex<double>>(N, 0.0));
+        ComplexGrid ht_dz = ComplexGrid(N, std::vector<std::complex<double>>(N, 0.0));
+
+        std::mt19937 rng = std::mt19937(seed);
+
     };
 
     struct RGBcolor {
