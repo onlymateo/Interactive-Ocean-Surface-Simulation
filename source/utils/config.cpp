@@ -99,6 +99,7 @@ Config loadConfig(const std::string& path) {
         }
 
         if (method.value("name", "") == "fft") {
+            config.f.process = method.value("process", config.f.process);
             config.f.A = method.value("A", config.f.A);
             config.f.V = method.value("V", config.f.V);
             config.f.L = config.f.V * config.f.V / 9.81; // largest wave made by the wind

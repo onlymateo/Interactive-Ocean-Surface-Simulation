@@ -3,6 +3,10 @@
 #include "engines/chunk.hpp"
 #include "engines/lighting.hpp"
 #include "engines/skybox.hpp"
+#include "calculus/calculus.hpp"
+#include "calculus/fft_gpu.hpp"
+#include "render/plane.hpp"
+
 
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3.h>
@@ -14,68 +18,93 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
-#include "render/plane.hpp"
+#include <algorithm>
+#include <complex>
 
 using Microsoft::WRL::ComPtr;
-
-// I don't like this code
 
 namespace {
 
 // Vertex shader: place the point on screen. Pixel shader: use the colour of the vertex.
 const char* SHADER_SOURCE = R"(
-cbuffer Camera : register(b0) {
-    row_major float4x4 viewProjection;
-};
+    cbuffer Camera : register(b0) {
+        row_major float4x4 viewProjection;
+    };
 
-cbuffer Lighting : register(b1) {
-    float3 sunDirection;
-    float sunIntensity;
-    float3 sunColor;
-    float ambient;
-    float3 cameraPosition;
-    float shininess;
-};
+    cbuffer Lighting : register(b1) {
+        float3 sunDirection;
+        float sunIntensity;
+        float3 sunColor;
+        float ambient;
+        float3 cameraPosition;
+        float shininess;
+    };
 
-struct VertexOut {
-    float4 position : SV_POSITION;
-    float3 color : COLOR;
-    float3 worldPosition : TEXCOORD0;
-};
+    cbuffer GpuWave : register(b2) {
+        uint useGpuWave;
+        uint gridN;
+        uint verticesPerChunk;
+        uint verticesPerRow;
+        float lambda;
+        float3 wavePad;
+    };
+    StructuredBuffer<float2> waveHeight : register(t0);
+    StructuredBuffer<float2> waveDx : register(t1);
+    StructuredBuffer<float2> waveDz : register(t2);
 
-VertexOut vsMain(float3 position : POSITION, float3 color : COLOR) {
-    VertexOut output;
-    output.position = mul(viewProjection, float4(position, 1.0));
-    output.color = color;
-    output.worldPosition = position;
-    return output;
-}
+    struct VertexOut {
+        float4 position : SV_POSITION;
+        float3 color : COLOR;
+        float3 worldPosition : TEXCOORD0;
+    };
 
-float4 psMain(VertexOut input) : SV_TARGET {
-    // The direction the surface faces, found from the position of the neighbour pixels
-    float3 normal = normalize(cross(ddx(input.worldPosition), ddy(input.worldPosition)));
-    if (normal.z < 0.0) {
-        normal = -normal; // the water always faces up
+
+    VertexOut vsMain(float3 position : POSITION, float3 color : COLOR, uint vertexId : SV_VertexID) {
+        if (useGpuWave != 0) {
+            // quelle case de la grille FFT correspond à ce sommet ?
+            uint local = vertexId % verticesPerChunk;
+            uint row = (local / verticesPerRow) % gridN;   // la dernière ligne/colonne reboucle sur la première
+            uint col = (local % verticesPerRow) % gridN;
+            uint i = row * gridN + col;
+
+            float sign = ((row + col) & 1) ? -1.0 : 1.0;    // même damier que plane.cpp
+            position.x += lambda * sign * waveDx[i].x;
+            position.y += lambda * sign * waveDz[i].x;
+            position.z += sign * waveHeight[i].x;
+        }
+
+        VertexOut output;
+        output.position = mul(viewProjection, float4(position, 1.0));
+        output.color = color;
+        output.worldPosition = position;
+        return output;
     }
 
-    float3 toSun = normalize(sunDirection);
-    float3 toCamera = normalize(cameraPosition - input.worldPosition);
-    float3 sunLight = sunColor * sunIntensity;
+    float4 psMain(VertexOut input) : SV_TARGET {
+        // The direction the surface faces, found from the position of the neighbour pixels
+        float3 normal = normalize(cross(ddx(input.worldPosition), ddy(input.worldPosition)));
+        if (normal.z < 0.0) {
+            normal = -normal; // the water always faces up
+        }
 
-    // Diffuse: the surface is brighter when it faces the sun
-    float diffuse = saturate(dot(normal, toSun));
+        float3 toSun = normalize(sunDirection);
+        float3 toCamera = normalize(cameraPosition - input.worldPosition);
+        float3 sunLight = sunColor * sunIntensity;
 
-    // Specular: the shine of the sun on the water, when the reflection goes to the camera
-    float3 halfway = normalize(toSun + toCamera);
-    float specular = pow(saturate(dot(normal, halfway)), shininess);
+        // Diffuse: the surface is brighter when it faces the sun
+        float diffuse = saturate(dot(normal, toSun));
 
-    float3 color = input.color * (ambient + diffuse * sunLight) + specular * sunLight;
-    return float4(color, 1.0);
-}
+        // Specular: the shine of the sun on the water, when the reflection goes to the camera
+        float3 halfway = normalize(toSun + toCamera);
+        float specular = pow(saturate(dot(normal, halfway)), shininess);
 
-float4 psOutline() : SV_TARGET {
-    return float4(0.0, 0.0, 0.0, 1.0);
-}
+        float3 color = input.color * (ambient + diffuse * sunLight) + specular * sunLight;
+        return float4(color, 1.0);
+    }
+
+    float4 psOutline() : SV_TARGET {
+        return float4(0.0, 0.0, 0.0, 1.0);
+    }
 )";
 
 ComPtr<ID3DBlob> compileShader(const char* entry, const char* target) {
@@ -184,7 +213,7 @@ int runDirectX(const Config& config) {
     device->CreateDepthStencilView(depthTexture.Get(), nullptr, &depthView);
 
     // Shaders, and how a vertex is laid out in memory (position, then colour).
-    ComPtr<ID3DBlob> vsCode = compileShader("vsMain", "vs_4_0");
+    ComPtr<ID3DBlob> vsCode = compileShader("vsMain", "vs_5_0");
     ComPtr<ID3DBlob> psCode = compileShader("psMain", "ps_4_0");
     ComPtr<ID3DBlob> outlineCode = compileShader("psOutline", "ps_4_0");
     if (!vsCode || !psCode || !outlineCode) {
@@ -210,10 +239,38 @@ int runDirectX(const Config& config) {
     Lighting lighting(device.Get(), config);
     Skybox skybox(device.Get(), config);
 
+
     const UINT indexCount = static_cast<UINT>(chunks[0].indices().size());
     const UINT verticesPerChunk = static_cast<UINT>(chunks[0].vertices().size());
     const UINT chunkBytes = verticesPerChunk * sizeof(Plane::Vertex);
     const UINT vertexBytes = chunkBytes * static_cast<UINT>(chunks.size());
+
+    // --- FFT sur GPU ---
+    const bool useGpuFFT = (config.selectedmethod == "fft" && config.f.process == "gpu");
+    FFTGpu fftGpu;
+    if (useGpuFFT && !fftGpu.init(device.Get(), config.f)) {
+        std::cerr << "Failed to initialise the GPU FFT" << std::endl;
+        glfwTerminate();
+        return 1;
+    }
+
+    struct GpuWaveParams {
+        UINT useGpuWave, gridN, verticesPerChunk, verticesPerRow;
+        float lambda, pad[3];
+    };
+    GpuWaveParams waveParams{useGpuFFT ? 1u : 0u, static_cast<UINT>(config.f.N), verticesPerChunk,
+                             static_cast<UINT>(config.cellsnumber + 1), config.f.lambda, {0, 0, 0}};
+    D3D11_BUFFER_DESC waveDesc{};
+    waveDesc.ByteWidth = sizeof(GpuWaveParams);   // 32 octets, multiple de 16
+    waveDesc.Usage = D3D11_USAGE_IMMUTABLE;
+    waveDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    D3D11_SUBRESOURCE_DATA waveData{&waveParams, 0, 0};
+    ComPtr<ID3D11Buffer> waveBuffer;
+    device->CreateBuffer(&waveDesc, &waveData, &waveBuffer);
+    // --------------------
+
+
+
 
     D3D11_BUFFER_DESC vertexDesc{};
     vertexDesc.ByteWidth = vertexBytes;
@@ -309,6 +366,10 @@ int runDirectX(const Config& config) {
                 chunk.update(static_cast<float>(time));
             }
             ++updatesCounted;
+
+            if (useGpuFFT) {
+                fftGpu.compute(context.Get(), static_cast<float>(time));
+            }
         }
         if (recompute || chunksMoved) {
             D3D11_MAPPED_SUBRESOURCE mapped;
@@ -330,6 +391,10 @@ int runDirectX(const Config& config) {
         context->VSSetShader(vertexShader.Get(), nullptr, 0);
 
         // Coloured triangles
+        if (useGpuFFT) {
+            fftGpu.bindForVertexShader(context.Get());
+        }
+        context->VSSetConstantBuffers(2, 1, waveBuffer.GetAddressOf());   // le skybox utilise aussi b2, on le remet
         context->RSSetState(rasterState.Get());
         context->PSSetShader(pixelShader.Get(), nullptr, 0);
         for (size_t i = 0; i < chunks.size(); ++i) {

@@ -27,6 +27,7 @@
         int N = 16; //equals to cellsnumber
         float size = 100.0; //equals to plane size
         double L = V * V / 9.81;
+        std::string process = "cpu";
 
         using ComplexGrid = std::vector<std::vector<std::complex<double>>>;
         std::normal_distribution<double> dist = std::normal_distribution<double>(0.0, 1.0);

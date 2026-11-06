@@ -14,3 +14,4 @@ Vertex gerstnerWaveHeight(const Vertex& vertex, float time, const GerstnerConfig
 
     return (result);
 }
+

@@ -58,7 +58,10 @@ void Plane::update(float time) {
             vertices_[i] = gerstnerWaveHeight(base_[i], time, config.g);
         }
     }
+    
     if (config.selectedmethod == "fft") {
+        if (config.f.process == "gpu") return;   // <-- AJOUT : le GPU s'en charge, les sommets restent au repos
+
         const int verticesPerRow = config.cellsnumber + 1;
         const int N = config.f.N;
         // draw the initial spectrum once
@@ -66,17 +69,17 @@ void Plane::update(float time) {
             initFFTSpectrum(config.f);
         }
 
-        for (int m = 0; m < N; m++) {
+        for (int m = 0; m < N; m++) {  // ffttimeEvo (N² points)
             for (int n = 0; n < N; n++) {
                 fftTimeEvo(n, m, time, config.f);
             }
         }
 
-        ifft2d(config.f.ht);
+        ifft2d(config.f.ht); // ifft2d x 3 (ht, ht_dx, ht_dz)
         ifft2d(config.f.ht_dx);
         ifft2d(config.f.ht_dz);
 
-        for (int i = 0; i < verticesPerRow * verticesPerRow; i++) {
+        for (int i = 0; i < verticesPerRow * verticesPerRow; i++) { // copie dans vectrices_
             int m = i / verticesPerRow; // row
             int n = i % verticesPerRow; // column
 
