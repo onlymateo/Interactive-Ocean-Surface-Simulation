@@ -14,6 +14,9 @@
         std::vector<float> w = {}; // angular frequency for deep waters as w = sqrt(9.81 * k)
         std::vector<std::vector<float>> D = {{}}; // directionnal vector of a wave
         std::vector<float> s = {}; // steepness
+        std::string process = "cpu";
+        int N = 16; //equals to cellsnumber
+        float size = 100.0; //equals to plane size
     };
 
     struct FFTConfig {

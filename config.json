@@ -35,10 +35,11 @@
         "horizon": { "r": 0.7, "g": 0.8, "b": 0.9 }
     },
     "calculusfrequency": 60,
-    "selectedmethod": "fft",
+    "selectedmethod": "gerstner",
     "methods": [
         {
             "name": "gerstner",
+            "process": "cpu",
             "k": [
                 0.15,
                 0.2,

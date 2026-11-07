@@ -87,6 +87,9 @@ Config loadConfig(const std::string& path) {
             config.g.w = method.value("w", config.g.w);
             config.g.D = method.value("D", config.g.D);
             config.g.s = method.value("s", config.g.s);
+            config.g.process = method.value("process", config.g.process);
+            config.g.N = plane.value("cellsnumber", config.g.N);
+            config.g.size = plane.value("planesize", config.g.size);
 
             // The steepness only makes sense with unit directions
             for (std::vector<float>& direction : config.g.D) {

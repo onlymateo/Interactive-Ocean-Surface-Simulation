@@ -54,13 +54,16 @@ void Plane::moveTo(float centerX, float centerY) {
 
 void Plane::update(float time) {
     if (config.selectedmethod == "gerstner") {
+        if (config.g.process == "gpu") return;
         for (std::size_t i = 0; i < base_.size(); i++) {
             vertices_[i] = gerstnerWaveHeight(base_[i], time, config.g);
         }
     }
     
     if (config.selectedmethod == "fft") {
-        if (config.f.process == "gpu") return;   // <-- AJOUT : le GPU s'en charge, les sommets restent au repos
+        if (config.f.process == "gpu") return;
+        // En mode GPU, Plane::update ne fait plus rien. Les sommets gardent leur position de repos (la grille plate). 
+        // Le déplacement est ajouté plus tard par le vertex shader. Ces sommets continuent d’être décalés par moveTo quand un chunk suit la caméra.
 
         const int verticesPerRow = config.cellsnumber + 1;
         const int N = config.f.N;

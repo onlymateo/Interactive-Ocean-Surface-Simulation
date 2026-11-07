@@ -2,6 +2,7 @@ CXX = g++
 SRCS = main.cpp \
        source/calculus/fft.cpp \
        source/calculus/fft_gpu.cpp \
+       source/calculus/gerstner_gpu.cpp \
        source/calculus/gerstner.cpp \
        source/engines/directx.cpp \
        source/engines/controller.cpp \

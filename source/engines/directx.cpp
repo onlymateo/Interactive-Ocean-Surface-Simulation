@@ -5,6 +5,7 @@
 #include "engines/skybox.hpp"
 #include "calculus/calculus.hpp"
 #include "calculus/fft_gpu.hpp"
+#include "calculus/gerstner_gpu.hpp"
 #include "render/plane.hpp"
 
 
@@ -48,9 +49,39 @@ const char* SHADER_SOURCE = R"(
         float lambda;
         float3 wavePad;
     };
+    // Les paramètres du déplacement, envoyés par le CPU :
+    //    useGpuWave : 1 si le mode GPU est actif, 0 sinon. Cela permet de garder le même shader pour Gerstner et pour la FFT CPU.
+    //    gridN : f.N.
+    //    verticesPerChunk : le nombre de sommets d’un chunk ((cellsnumber+1)²).
+    //    verticesPerRow : cellsnumber + 1.
+    //    lambda : l’intensité du déplacement horizontal (« chopiness »).
+    //    wavePad : du remplissage jusqu’à 32 octets.
+
+
     StructuredBuffer<float2> waveHeight : register(t0);
     StructuredBuffer<float2> waveDx : register(t1);
     StructuredBuffer<float2> waveDz : register(t2);
+    // Les trois résultats de la FFT, en lecture seule. Ce sont les ht, dx, dz branchés par bindForVertexShader.
+
+
+    #define MAX_GERSTNER_WAVES 16
+
+    cbuffer Gerstner : register(b3) {
+        uint useGerstner; // 1 si Gerstner GPU est actif, 0 sinon
+        uint gerstnerWaveCount; // le nombre de vagues. C’est l’équivalent de g.k.size().
+        float gerstnerTime; // le temps de l’animation (le time de gerstnerWaveHeight). C’est l’équivalent de g.k.size().
+        float gerstnerPad; // du remplissage. Les 4 valeurs ci-dessus (uint, uint, float, float) font exactement 16 octets, la taille d’une ligne de cbuffer.
+        float4 gerstnerWave[MAX_GERSTNER_WAVES];
+        float4 gerstnerDir[MAX_GERSTNER_WAVES];
+        // Deux tableaux de 16 float4. On regroupe les paramètres d’une vague dans un seul float4 :
+        // gerstnerWave[i] = (k, A, w, s) : nombre d’onde, amplitude, pulsation, raideur.
+        // gerstnerDir[i] = (Dx, Dy, 0, 0) : direction de la vague. Les deux dernières composantes sont inutilisées.
+        // Pourquoi des float4 ? Dans un cbuffer, chaque élément d’un tableau est aligné sur 16 octets. 
+        // Un float k[16] gaspillerait 12 octets par élément et ne correspondrait plus à la struct C++. Avec des float4, il n’y a aucun trou.
+    };
+    // Un cbuffer est un paquet de valeurs envoyées par le CPU, identiques pour tous les sommets. register(b3) est son emplacement. 
+    // b0 est la caméra, b1 la lumière et b2 la FFT (ou le skybox), donc b3 est libre. C’est le numéro du VSSetConstantBuffers(3, ...) dans le C++.
+
 
     struct VertexOut {
         float4 position : SV_POSITION;
@@ -60,17 +91,41 @@ const char* SHADER_SOURCE = R"(
 
 
     VertexOut vsMain(float3 position : POSITION, float3 color : COLOR, uint vertexId : SV_VertexID) {
+        // SV_VertexID est le numéro du sommet en cours de traitement. Le GPU le fournit tout seul, il n’a pas besoin d’être dans votre layout. 
+        // Avec DrawIndexed(..., baseVertex), ce numéro inclut le baseVertex, donc il vaut numéro du chunk × verticesPerChunk + indice local.
+
+
         if (useGpuWave != 0) {
-            // quelle case de la grille FFT correspond à ce sommet ?
-            uint local = vertexId % verticesPerChunk;
+            uint local = vertexId % verticesPerChunk; // Retire le décalage du chunk pour obtenir l’indice du sommet dans son chunk.
+
             uint row = (local / verticesPerRow) % gridN;   // la dernière ligne/colonne reboucle sur la première
             uint col = (local % verticesPerRow) % gridN;
-            uint i = row * gridN + col;
+            uint i = row * gridN + col; // L’indice dans les buffers de la FFT (rangés à plat, comme avant).
 
-            float sign = ((row + col) & 1) ? -1.0 : 1.0;    // même damier que plane.cpp
+            float sign = ((row + col) & 1) ? -1.0 : 1.0;
+            // Le damier (−1)^(row+col). Votre spectre est centré sur N/2 alors que la FFT attend k = 0 à l’indice 0. 
+            // Ce décalage se traduit dans l’espace réel par un signe alterné, qu’on annule ici. C’est exactement sign de plane.cpp:93.
+
+        
             position.x += lambda * sign * waveDx[i].x;
             position.y += lambda * sign * waveDz[i].x;
             position.z += sign * waveHeight[i].x;
+            // On déplace le sommet. Seule la partie réelle (.x) compte, la partie imaginaire est ~0 après la FFT inverse. 
+            // L’axe z est la hauteur, et x/y le déplacement horizontal, comme dans votre plane.cpp.
+        }
+        if (useGerstner != 0) {
+            float2 rest = position.xy; // la phase utilise la position au repos, comme gerstner.cpp
+            for (uint n = 0; n < gerstnerWaveCount; n++) {
+                float4 wv = gerstnerWave[n];
+                float2 d = gerstnerDir[n].xy;
+                // On lit les paramètres de la vague n :
+                //    wv.x = k, wv.y = A, wv.z = w, wv.w = s.
+                //    d = (Dx, Dy).
+
+                float phase = wv.x * dot(d, rest) - wv.z * gerstnerTime;
+                position.xy += (wv.w / wv.x) * d * cos(phase);
+                position.z += wv.y * sin(phase);
+            }
         }
 
         VertexOut output;
@@ -245,6 +300,16 @@ int runDirectX(const Config& config) {
     const UINT chunkBytes = verticesPerChunk * sizeof(Plane::Vertex);
     const UINT vertexBytes = chunkBytes * static_cast<UINT>(chunks.size());
 
+
+    // --- Gerstner sur GPU ---
+    const bool useGpuGerstner = (config.selectedmethod == "gerstner" && config.g.process == "gpu");
+    GerstnerGpu gerstnerGpu;
+    if (useGpuGerstner && !gerstnerGpu.init(device.Get(), config.g)) {
+        std::cerr << "Failed to initialise the GPU FFT" << std::endl;
+        glfwTerminate();
+        return 1;
+    }
+
     // --- FFT sur GPU ---
     const bool useGpuFFT = (config.selectedmethod == "fft" && config.f.process == "gpu");
     FFTGpu fftGpu;
@@ -257,7 +322,10 @@ int runDirectX(const Config& config) {
     struct GpuWaveParams {
         UINT useGpuWave, gridN, verticesPerChunk, verticesPerRow;
         float lambda, pad[3];
-    };
+    }; 
+    // La copie C++ du cbuffer GpuWave, dans le même ordre. Elle fait 32 octets.
+
+
     GpuWaveParams waveParams{useGpuFFT ? 1u : 0u, static_cast<UINT>(config.f.N), verticesPerChunk,
                              static_cast<UINT>(config.cellsnumber + 1), config.f.lambda, {0, 0, 0}};
     D3D11_BUFFER_DESC waveDesc{};
@@ -267,9 +335,8 @@ int runDirectX(const Config& config) {
     D3D11_SUBRESOURCE_DATA waveData{&waveParams, 0, 0};
     ComPtr<ID3D11Buffer> waveBuffer;
     device->CreateBuffer(&waveDesc, &waveData, &waveBuffer);
+    // Ces valeurs ne changent jamais, donc le buffer est créé une fois pour toutes avec ses données (waveData).
     // --------------------
-
-
 
 
     D3D11_BUFFER_DESC vertexDesc{};
@@ -370,6 +437,11 @@ int runDirectX(const Config& config) {
             if (useGpuFFT) {
                 fftGpu.compute(context.Get(), static_cast<float>(time));
             }
+            // À chaque mise à jour (recompute, selon calculusfrequency), on recalcule la FFT sur le GPU. Pas de copie de sommets, pas de Map ici.
+
+            if (useGpuGerstner) {
+                 gerstnerGpu.update(context.Get(), static_cast<float>(time));
+            }
         }
         if (recompute || chunksMoved) {
             D3D11_MAPPED_SUBRESOURCE mapped;
@@ -394,7 +466,13 @@ int runDirectX(const Config& config) {
         if (useGpuFFT) {
             fftGpu.bindForVertexShader(context.Get());
         }
-        context->VSSetConstantBuffers(2, 1, waveBuffer.GetAddressOf());   // le skybox utilise aussi b2, on le remet
+        if (useGpuGerstner) {
+            gerstnerGpu.bindForVertexShader(context.Get());
+        }
+        context->VSSetConstantBuffers(2, 1, waveBuffer.GetAddressOf());
+        // Juste avant de dessiner l’eau : on branche les 3 résultats sur t0..t2 et le cbuffer sur b2. Il faut le refaire à chaque frame parce que le skybox, 
+        // dessiné juste avant, utilise aussi l’emplacement b2 pour son propre cbuffer Sky. En remettant le nôtre juste avant DrawIndexed, 
+        // on est sûr que le vertex shader de l’eau lit le bon.
         context->RSSetState(rasterState.Get());
         context->PSSetShader(pixelShader.Get(), nullptr, 0);
         for (size_t i = 0; i < chunks.size(); ++i) {
