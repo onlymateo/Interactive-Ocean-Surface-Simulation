@@ -154,7 +154,8 @@ const char* SHADER_SOURCE = R"(
         float specular = pow(saturate(dot(normal, halfway)), shininess);
 
         float3 color = input.color * (ambient + diffuse * sunLight) + specular * sunLight;
-        return float4(color, 1.0);
+        return float4(normal * 0.5 + 0.5, 1.0);
+        //return float4(color, 1.0);
     }
 
     float4 psOutline() : SV_TARGET {
@@ -252,6 +253,9 @@ int runDirectX(const Config& config) {
     ComPtr<ID3D11Texture2D> backBuffer;
     swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
     ComPtr<ID3D11RenderTargetView> colorView;
+    // D3D11_RENDER_TARGET_VIEW_DESC rtvDesc{};
+    // rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    // rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
     device->CreateRenderTargetView(backBuffer.Get(), nullptr, &colorView);
 
     D3D11_TEXTURE2D_DESC depthDesc{};

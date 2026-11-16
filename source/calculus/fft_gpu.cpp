@@ -69,7 +69,7 @@ const char* CS_SOURCE = R"(
         float2 e2 = float2(e1.x, -e1.y);
         // e1 = e^(iωt), et e2 = e^(−iωt) (le conjugué de e1). C'est std::polar(1.0, ±ωt).
         float2 h = cmul(a, e1) + cmul(b, e2);
-        La formule centrale de time evolution : h(k,t) = h0(k)·e^(iωt) + conj(h0(−k))·e^(−iωt).
+        // La formule centrale de time evolution : h(k,t) = h0(k)·e^(iωt) + conj(h0(−k))·e^(−iωt).
 
         uint i = m * N + n;
         bufA[i] = h;

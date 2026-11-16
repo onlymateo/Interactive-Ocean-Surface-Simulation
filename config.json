@@ -5,7 +5,7 @@
     },
     "plane": {
         "cellsnumber": 512,
-        "planesize": 200.0,
+        "planesize": 1000.0,
         "color": {
             "r": 0.1,
             "g": 0.5,
@@ -35,7 +35,7 @@
         "horizon": { "r": 0.7, "g": 0.8, "b": 0.9 }
     },
     "calculusfrequency": 60,
-    "selectedmethod": "gerstner",
+    "selectedmethod": "fft",
     "methods": [
         {
             "name": "gerstner",
@@ -69,7 +69,7 @@
         {
             "name": "fft",
             "process" :"gpu",
-            "A": 0.000005,
+            "A": 0.0000005,
             "V": 10.0,
             "w": [1.0, 0.1],
             "seed": 42,

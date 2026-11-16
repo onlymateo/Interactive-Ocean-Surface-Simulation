@@ -49,8 +49,8 @@ Notes on what was done, what went wrong, what to do next, and thoughts about the
 | 3 | [2026-10-09](diary/2026-10-09.md) | Multiple waves, calculus frequency, camera |
 | 4 | [2026-10-11](diary/2026-10-11.md) | Steepness, skybox, chunks |
 | 5 | [2026-10-17](diary/2026-10-17.md) | CPU FFT waves |
-| 6 | [2026-11-06](diary/2026-11-6.md) | GPU FFT |
-| 7 | [2026-11-07](diary/2026-11-7.md) | GPU Gerstner |
+| 6 | [2026-11-06](diary/2026-11-06.md) | GPU FFT |
+| 7 | [2026-11-07](diary/2026-11-07.md) | GPU Gerstner |
 
 ## Roadmap
 
