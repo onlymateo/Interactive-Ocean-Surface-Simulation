@@ -1,0 +1,7 @@
+Partie 1 - La mer comme surface à microfacettes
+
+1 - Pourquoi la normale moyenne éteint-elle un reflet que la moyenne des éclairages conserve ? (réponse chiffrée attendue)
+
+2 - Calcule la longueur d'onde minimale représentée par ta grille N = 512 sur 200 m.
+
+3 - Dans ton code actuel, quelles données du maillage sont utilisées pour l'éclairage ? Quelles données seront utilisées à la fin du tutoriel ?
